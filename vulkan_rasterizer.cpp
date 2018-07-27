@@ -10,11 +10,14 @@
 #include <fstream>
 #include <unordered_map>
 
+#include <X11/Xlib.h>
+#include <X11/Xutil.h>
+
 #define STB_IMAGE_IMPLEMENTATION
 #include <stb_image.h>
 
-#define GLFW_INCLUDE_VULKAN
-#include <GLFW/glfw3.h>
+#define VK_USE_PLATFORM_XLIB_KHR
+#include <vulkan/vulkan.h>
 
 #define GLM_FORCE_RADIANS
 #define GLM_FORCE_DEPTH_ZERO_TO_ONE
@@ -50,7 +53,7 @@ static std::vector<char> readFile(const std::string& filename) {
   return buffer;
 }
 
-const char* validation_layers[1] = {"VK_LAYER_LUNARG_standard_validation"};
+const char* validation_layers[] = {"VK_LAYER_LUNARG_standard_validation", "VK_LAYER_LUNARG_api_dump"};
 const std::vector<const char*> deviceExtensions = {
   VK_KHR_SWAPCHAIN_EXTENSION_NAME
 };
@@ -73,20 +76,6 @@ void VulkanRasterizer::_destroy_debug_report_callback_EXT(VkInstance instance, V
     if (func != nullptr) {
         func(instance, callback, pAllocator);
     }
-}
-
-std::vector<const char*> VulkanRasterizer::_get_required_extensions(bool enable_validation) {
-    uint32_t glfwExtensionCount = 0;
-    const char** glfwExtensions;
-    glfwExtensions = glfwGetRequiredInstanceExtensions(&glfwExtensionCount);
-
-    std::vector<const char*> extensions(glfwExtensions, glfwExtensions + glfwExtensionCount);
-
-    if (enable_validation) {
-        extensions.push_back(VK_EXT_DEBUG_REPORT_EXTENSION_NAME);
-    }
-
-    return extensions;
 }
 
 VKAPI_ATTR VkBool32 VKAPI_CALL VulkanRasterizer::_debug_callback(VkDebugReportFlagsEXT flags, VkDebugReportObjectTypeEXT objType, uint64_t obj, size_t location, int32_t code, const char* layerPrefix, const char* msg, void* userData) {
@@ -121,6 +110,20 @@ bool _check_validation_layer_support(std::vector<const char*> validationLayers) 
   return true;
 }
 
+std::vector<const char*> VulkanRasterizer::_get_required_extensions(bool enable_validation) {
+    std::vector<const char*> extensions;
+
+    if (enable_validation) {
+        extensions.push_back(VK_EXT_DEBUG_REPORT_EXTENSION_NAME);
+    }
+
+    // TODO: adapt to any OS
+    extensions.push_back(VK_KHR_SURFACE_EXTENSION_NAME);
+    extensions.push_back(VK_KHR_XLIB_SURFACE_EXTENSION_NAME);
+
+    return extensions;
+}
+
 int VulkanRasterizer::_create_instance() {
   // App infos
   VkApplicationInfo appInfo = {};
@@ -147,7 +150,7 @@ int VulkanRasterizer::_create_instance() {
       "VK_LAYER_LUNARG_standard_validation"
     };
     create_info.ppEnabledLayerNames = validation_layers;
-    create_info.enabledLayerCount = 1;
+    create_info.enabledLayerCount = sizeof(validation_layers) / sizeof(char*);
   } else {
     create_info.enabledLayerCount = 0;
   }
@@ -249,6 +252,7 @@ struct VulkanRasterizer::QueueFamilyIndices VulkanRasterizer::_pick_queue_famili
     }
 
     VkBool32 presentSupport = false;
+
     vkGetPhysicalDeviceSurfaceSupportKHR(p_physical_device, i, surface, &presentSupport);
     if (queueFamily.queueCount > 0 && presentSupport) {
       indices.present_family = i;
@@ -345,7 +349,16 @@ int VulkanRasterizer::_create_logical_device() {
 
 int VulkanRasterizer::_create_surface() {
   // >>>>>>>>>>>>>>>>>
-    if (glfwCreateWindowSurface(instance, window, nullptr, &surface) != VK_SUCCESS) {
+   VkXlibSurfaceCreateInfoKHR surfaceCreateInfo;
+   surfaceCreateInfo.sType = VK_STRUCTURE_TYPE_XLIB_SURFACE_CREATE_INFO_KHR;
+   surfaceCreateInfo.pNext = nullptr;
+   surfaceCreateInfo.flags = 0;
+   surfaceCreateInfo.dpy = x11_display;
+   surfaceCreateInfo.window = x11_window;
+
+   VkResult result = vkCreateXlibSurfaceKHR(instance, &surfaceCreateInfo, nullptr, &surface);
+
+    if (result != VK_SUCCESS) {
         throw std::runtime_error("failed to create window surface!");
     }
   // <<<<<<<<<<<<<<<<<
@@ -419,8 +432,8 @@ VkExtent2D VulkanRasterizer::_pick_swap_extend(const VkSurfaceCapabilitiesKHR& c
     return capabilities.currentExtent;
   } else {
     // Choose the best fitting window resolution
-    int width, height;
-    glfwGetFramebufferSize(window, &width, &height);
+    unsigned int width, height;
+    XGetGeometry(x11_display, x11_window, nullptr, nullptr, nullptr, &width, &height, nullptr, nullptr);
     VkExtent2D actualExtent = {
       std::max(capabilities.minImageExtent.width, std::min(capabilities.maxImageExtent.width, static_cast<uint32_t>(width))),
       std::max(capabilities.minImageExtent.height, std::min(capabilities.maxImageExtent.height, static_cast<uint32_t>(height)))
@@ -486,10 +499,17 @@ int VulkanRasterizer::_create_swap_chain() {
 }
 
 int VulkanRasterizer::_recreate_swap_chain() {
+
   int width = 0, height = 0;
   while (width == 0 || height == 0) {
-    glfwGetFramebufferSize(window, &width, &height);
-    glfwWaitEvents();
+    XEvent e;
+    XNextEvent(x11_display, &e);
+    if (e.type == ConfigureNotify) {
+      XConfigureEvent xce = e.xconfigure;
+      width = xce.width;
+      height = xce.height;
+    }
+
   }
 
   vkDeviceWaitIdle(device);
@@ -1613,18 +1633,66 @@ int VulkanRasterizer::_draw_frame() {
 }
 
 
-static void framebufferResizeCallback(GLFWwindow* window, int width, int height) {
+/*static void framebufferResizeCallback(Window* window, int width, int height) {
   auto app = reinterpret_cast<VulkanRasterizer*>(glfwGetWindowUserPointer(window));
   app->notify_should_resize();
-}
+}*/
 
 int VulkanRasterizer::init() {
   // >>>>>>>>>>>>>>>>>
-  glfwInit();
-  glfwWindowHint(GLFW_CLIENT_API, GLFW_NO_API);
-  window = glfwCreateWindow(WIDTH, HEIGHT, "Vulkan", nullptr, nullptr);
-  glfwSetWindowUserPointer(window, this);
-  glfwSetFramebufferSizeCallback(window, framebufferResizeCallback);
+  Display * x11_display = XOpenDisplay(nullptr);
+  if (x11_display == nullptr) {
+    throw std::runtime_error("Could not open display");
+  }
+
+  XSynchronize(x11_display,  true);
+
+  int screen = DefaultScreen(x11_display);
+
+	Colormap defaultColorMap = XDefaultColormap(x11_display, screen);
+
+	const unsigned long wamask = CWColormap | CWEventMask |  CWBorderPixel;
+
+	XSetWindowAttributes wa;
+	memset( &wa, 0, sizeof(wa) );
+	wa.colormap = defaultColorMap;
+	wa.border_pixel = 0;
+	wa.event_mask = StructureNotifyMask | PropertyChangeMask | ResizeRedirectMask |
+					KeyPressMask | KeyReleaseMask |
+					ButtonPressMask | ButtonReleaseMask |
+					FocusChangeMask | ExposureMask | VisibilityChangeMask |
+          EnterWindowMask | LeaveWindowMask;
+
+  x11_window = XCreateWindow(
+                    x11_display,		// Display * display
+										RootWindow(x11_display, screen),			// Window parent
+										0,						// int x
+										0,						// int y
+										WIDTH,	// unsigned int width
+										HEIGHT,	// unsigned int height
+										0,						// unsigned int border_width
+										CopyFromParent,			// int depth
+										InputOutput,			// unsigned int class
+										CopyFromParent,			// Visual * visual
+										wamask,					// unsigned long valuemask
+                    &wa );
+
+
+		// Make the window fixed size.
+		XSizeHints * hints = XAllocSizeHints();
+		hints->flags = ( PMinSize | PMaxSize );
+		hints->min_width = WIDTH;
+		hints->max_width = WIDTH;
+		hints->min_height = HEIGHT;
+		hints->max_height = HEIGHT;
+		XSetWMNormalHints(x11_display, x11_window, hints );
+		XFree( hints );
+
+		// First map the window and then center the window on the screen.
+		XMapRaised(x11_display, x11_window);
+		XMoveResizeWindow( x11_display, x11_window, 0, 0, WIDTH, HEIGHT);
+    XFlush(x11_display);
+
   // <<<<<<<<<<<<<<<<<
 
   _create_instance();
@@ -1663,10 +1731,15 @@ int VulkanRasterizer::init() {
 
 
 int VulkanRasterizer::process() {
-  while(!glfwWindowShouldClose(window)) {
-    glfwPollEvents();
-    _draw_frame();
-  }
+   while (1) {
+     XEvent e;
+     XNextEvent(x11_display, &e);
+     if (e.type == Expose) {
+       _draw_frame();
+     }
+     if (e.type == KeyPress)
+       break;
+   }
 
   vkDeviceWaitIdle(device);
   return 0;
@@ -1730,8 +1803,7 @@ int VulkanRasterizer::cleanup() {
   vkDestroyInstance(instance, nullptr);
 
   // >>>>>>>>>>>>>>>>>
-  glfwDestroyWindow(window);
-  glfwTerminate();
+  XCloseDisplay(x11_display);
   // <<<<<<<<<<<<<<<<<
 
   return 0;
@@ -1740,8 +1812,8 @@ int VulkanRasterizer::cleanup() {
 int main(const int argc, const char *argv[]) {
   VulkanRasterizer *vulkan_rasterizer = new VulkanRasterizer(true);
   vulkan_rasterizer->init();
-  vulkan_rasterizer->process();
-  vulkan_rasterizer->cleanup();
+  //vulkan_rasterizer->process();
+  //vulkan_rasterizer->cleanup();
 
   delete(vulkan_rasterizer);
 

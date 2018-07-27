@@ -4,8 +4,11 @@
 #include <vector>
 #include <array>
 
-#define GLFW_INCLUDE_VULKAN
-#include <GLFW/glfw3.h>
+#include <X11/Xlib.h>
+#include <X11/Xutil.h>
+
+#define VK_USE_PLATFORM_XLIB_KHR
+#include <vulkan/vulkan.h>
 
 #define GLM_LANG_STL11_FORCED
 #define GLM_ENABLE_EXPERIMENTAL
@@ -80,7 +83,8 @@ class VulkanRasterizer {
 
     bool enable_validation;
 
-    GLFWwindow * window;
+    Display * x11_display;
+    Window x11_window;
 
     VkInstance instance = NULL;
     VkPhysicalDevice physical_device = VK_NULL_HANDLE;
