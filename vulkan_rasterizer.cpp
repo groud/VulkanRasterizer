@@ -141,9 +141,6 @@ int VulkanRasterizer::_create_instance() {
 
   // Enable the validation layers
   if (enable_validation) {
-    const std::vector<const char*> validationLayers = {
-      "VK_LAYER_LUNARG_standard_validation"
-    };
     create_info.ppEnabledLayerNames = validation_layers;
     create_info.enabledLayerCount = sizeof(validation_layers) / sizeof(char*);
   } else {
@@ -327,7 +324,7 @@ int VulkanRasterizer::_create_logical_device() {
   create_info.ppEnabledExtensionNames = deviceExtensions.data();
   if (enable_validation) {
     create_info.ppEnabledLayerNames = validation_layers;
-    create_info.enabledLayerCount = 1;
+    create_info.enabledLayerCount = sizeof(validation_layers) / sizeof(char*);
   } else {
     create_info.enabledLayerCount = 0;
   }
