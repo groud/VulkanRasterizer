@@ -201,7 +201,8 @@ class VulkanRasterizer {
     int _create_texture_image();
     int _create_texture_image_view();
     int _create_texture_sampler();
-    int _load_model();
+    //int _load_model();
+    int _load_simple_quad();
     int _create_vertex_buffer();
     int _create_index_buffer();
     int _create_uniform_buffers();

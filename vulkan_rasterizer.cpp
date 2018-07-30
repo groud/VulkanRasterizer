@@ -24,16 +24,11 @@
 #include <glm/glm.hpp>
 #include <glm/gtc/matrix_transform.hpp>
 
-#define TINYOBJLOADER_IMPLEMENTATION
-#include <tiny_obj_loader.h>
-
 #include <chrono>
 
 #define WIDTH 800
 #define HEIGHT 600
 
-#define MODEL_PATH "models/chalet.obj"
-#define TEXTURE_PATH "models/chalet.jpg"
 
 static std::vector<char> readFile(const std::string& filename) {
   std::ifstream file(filename, std::ios::ate | std::ios::binary);
@@ -1157,7 +1152,7 @@ int VulkanRasterizer::_create_mipmaps(VkImage image, VkFormat format, int32_t te
 int VulkanRasterizer::_create_texture_image() {
   // Get image from file
   int texWidth, texHeight, texChannels;
-  stbi_uc* pixels = stbi_load(TEXTURE_PATH, &texWidth, &texHeight, &texChannels, STBI_rgb_alpha);
+  stbi_uc* pixels = stbi_load("texture.jpg", &texWidth, &texHeight, &texChannels, STBI_rgb_alpha);
   VkDeviceSize imageSize = texWidth * texHeight * 4;
 
   if (!pixels) {
@@ -1229,6 +1224,24 @@ int VulkanRasterizer::_create_texture_sampler() {
   return 0;
 }
 
+
+int VulkanRasterizer::_load_simple_quad() {
+  vertices = {
+    {{-0.5f, -0.5f, 0.0f}, {1.0f, 0.0f, 0.0f}, {1.0f, 0.0f}},
+    {{0.5f, -0.5f, 0.0f}, {0.0f, 1.0f, 0.0f}, {0.0f, 0.0f}},
+    {{0.5f, 0.5f, 0.0f}, {0.0f, 0.0f, 1.0f}, {0.0f, 1.0f}},
+    {{-0.5f, 0.5f, 0.0f}, {1.0f, 1.0f, 1.0f}, {1.0f, 1.0f}}
+  };
+
+  indices = {
+    0, 1, 2, 2, 3, 0
+  };
+
+  return 0;
+}
+
+
+/*
 int VulkanRasterizer::_load_model() {
   tinyobj::attrib_t attrib;
   std::vector<tinyobj::shape_t> shapes;
@@ -1236,7 +1249,9 @@ int VulkanRasterizer::_load_model() {
   std::string err;
   std::unordered_map<Vertex, uint32_t> uniqueVertices = {};
 
-  if (!tinyobj::LoadObj(&attrib, &shapes, &materials, &err, MODEL_PATH)) {
+  std::string model = "models/chalet.obj";
+
+  if (!tinyobj::LoadObj(&attrib, &shapes, &materials, &err, model)) {
     throw std::runtime_error(err);
   }
 
@@ -1262,7 +1277,7 @@ int VulkanRasterizer::_load_model() {
         vertices.push_back(vertex);
       }
 
-      indices.push_back(uniqueVertices[vertex]);
+      indices.pVush_back(uniqueVertices[vertex]);
     }
   }
 
@@ -1270,6 +1285,7 @@ int VulkanRasterizer::_load_model() {
 
   return 0;
 }
+*/
 
 int VulkanRasterizer::_create_vertex_buffer() {
   VkDeviceSize bufferSize = sizeof(vertices[0]) * vertices.size();
@@ -1715,7 +1731,8 @@ int VulkanRasterizer::init() {
   _create_texture_image_view();
   _create_texture_sampler();
 
-  _load_model();
+  //_load_model();
+  _load_simple_quad();
   _create_vertex_buffer();
   _create_index_buffer();
   _create_uniform_buffers();
